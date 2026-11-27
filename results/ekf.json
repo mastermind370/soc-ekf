@@ -1,0 +1,290 @@
+{
+  "temp_c": 25.0,
+  "dt_s": 1.0,
+  "tuning": {
+    "sigma_v": 0.04,
+    "sigma_soc_proc": 1e-06,
+    "sigma_rc_proc": 0.001,
+    "sigma_soc0": 0.25,
+    "sigma_rc0": 0.01
+  },
+  "tuning_set": [
+    "03-21-17_09.38 25degC_LA92_Pan18650PF.mat",
+    "03-18-17_02.17 25degC_Cycle_1_Pan18650PF.mat",
+    "03-19-17_03.25 25degC_Cycle_2_Pan18650PF.mat",
+    "03-19-17_09.07 25degC_Cycle_3_Pan18650PF.mat",
+    "03-19-17_14.31 25degC_Cycle_4_Pan18650PF.mat",
+    "03-21-17_16.27 25degC_NN_Pan18650PF.mat"
+  ],
+  "tuning_objective_rmse_pct": 1.8098769488268964,
+  "per_file": {
+    "UDDS:03-21-17_00.29 25degC_UDDS_Pan18650PF.mat": {
+      "kind": "UDDS",
+      "hours": 6.235277777777778,
+      "true_start": {
+        "rmse_pct": 0.639966849620539,
+        "max_abs_pct": 1.871755466311245,
+        "final_pct": 1.7990947336878782,
+        "mean_pct": -0.051325133568314675
+      },
+      "wrong_start": {
+        "rmse_pct": 0.6448554405003437,
+        "max_abs_pct": 5.937987493571062,
+        "final_pct": 1.7895924041083755,
+        "mean_pct": -0.08759838188503838
+      },
+      "wrong_start_offset": -0.3,
+      "converge_s_5pct": 1.0,
+      "converge_s_2pct": 2.0,
+      "robustness": {
+        "gain_plus5pct": {
+          "ekf": {
+            "rmse_pct": 2.4849862275995878,
+            "max_abs_pct": 3.870462272231967,
+            "final_pct": 1.9429816617840003,
+            "mean_pct": -1.9584698998596686
+          },
+          "cc": {
+            "rmse_pct": 4.347069123535381,
+            "max_abs_pct": 7.60593729084963,
+            "final_pct": -7.600568878215763,
+            "mean_pct": -3.742065034115793
+          }
+        },
+        "gain_minus5pct": {
+          "ekf": {
+            "rmse_pct": 2.4254603614870134,
+            "max_abs_pct": 3.754507477775318,
+            "final_pct": 1.4892527132156788,
+            "mean_pct": 2.114806696408947
+          },
+          "cc": {
+            "rmse_pct": 0.9771048474413916,
+            "max_abs_pct": 1.7657363076284627,
+            "final_pct": 1.7008765441863694,
+            "mean_pct": 0.842258638408711
+          }
+        },
+        "white_noise": {
+          "ekf": {
+            "rmse_pct": 0.6617483535861317,
+            "max_abs_pct": 1.911042276591686,
+            "final_pct": 1.8439783262242688,
+            "mean_pct": -0.07520446400491589
+          },
+          "sigma_i_a": 0.0593343615333009,
+          "sigma_v_v": 0.005
+        }
+      },
+      "final_sigma_soc_pct": 0.16637319796659092
+    },
+    "US06:03-20-17_01.43 25degC_US06_Pan18650PF.mat": {
+      "kind": "US06",
+      "hours": 1.3383333333333334,
+      "true_start": {
+        "rmse_pct": 3.2125633539445837,
+        "max_abs_pct": 4.082043920159828,
+        "final_pct": 3.328337210235061,
+        "mean_pct": -1.8273748084430486
+      },
+      "wrong_start": {
+        "rmse_pct": 3.371964006010857,
+        "max_abs_pct": 5.485025721495029,
+        "final_pct": 3.3328840871254624,
+        "mean_pct": -1.9732657714070219
+      },
+      "wrong_start_offset": -0.3,
+      "converge_s_5pct": 1.0,
+      "converge_s_2pct": null,
+      "robustness": {
+        "gain_plus5pct": {
+          "ekf": {
+            "rmse_pct": 4.740813372664731,
+            "max_abs_pct": 7.281152892146187,
+            "final_pct": 3.464350653810486,
+            "mean_pct": -3.2731258019173324
+          },
+          "cc": {
+            "rmse_pct": 4.332202299675681,
+            "max_abs_pct": 7.287485152255124,
+            "final_pct": -7.287485152255124,
+            "mean_pct": -3.728708838703397
+          }
+        },
+        "gain_minus5pct": {
+          "ekf": {
+            "rmse_pct": 2.126282974437065,
+            "max_abs_pct": 4.293745950758882,
+            "final_pct": 3.1773977142553504,
+            "mean_pct": -0.19625147224255515
+          },
+          "cc": {
+            "rmse_pct": 0.9882951303451316,
+            "max_abs_pct": 1.6999731651000993,
+            "final_pct": 1.6308088276625776,
+            "mean_pct": 0.8562894979589105
+          }
+        },
+        "white_noise": {
+          "ekf": {
+            "rmse_pct": 3.2279624224864714,
+            "max_abs_pct": 4.037076441405133,
+            "final_pct": 3.3318441756724546,
+            "mean_pct": -1.8187074616607175
+          },
+          "sigma_i_a": 0.19048257619564696,
+          "sigma_v_v": 0.005
+        }
+      },
+      "final_sigma_soc_pct": 0.27552488110640244
+    },
+    "HWFET:03-20-17_05.56 25degC_HWFTa_Pan18650PF.mat": {
+      "kind": "HWFET",
+      "hours": 2.1144444444444446,
+      "true_start": {
+        "rmse_pct": 0.6348300503195717,
+        "max_abs_pct": 1.322325436719987,
+        "final_pct": -0.7369441729098675,
+        "mean_pct": -0.4266748774219771
+      },
+      "wrong_start": {
+        "rmse_pct": 0.7109797167012848,
+        "max_abs_pct": 5.937987493571062,
+        "final_pct": -0.7510241018229918,
+        "mean_pct": -0.5035879355719991
+      },
+      "wrong_start_offset": -0.3,
+      "converge_s_5pct": 1.0,
+      "converge_s_2pct": 2.0,
+      "robustness": {
+        "gain_plus5pct": {
+          "ekf": {
+            "rmse_pct": 2.3351394243141526,
+            "max_abs_pct": 3.6186581138245577,
+            "final_pct": -0.7468825154838945,
+            "mean_pct": -2.0337709392654686
+          },
+          "cc": {
+            "rmse_pct": 4.431182451664351,
+            "max_abs_pct": 7.6308766104592145,
+            "final_pct": -7.6308766104592145,
+            "mean_pct": -3.7995953511471345
+          }
+        },
+        "gain_minus5pct": {
+          "ekf": {
+            "rmse_pct": 1.7565065089166805,
+            "max_abs_pct": 3.3675826732861873,
+            "final_pct": -0.9049545714024567,
+            "mean_pct": 1.2396010377362288
+          },
+          "cc": {
+            "rmse_pct": 1.004139323950987,
+            "max_abs_pct": 1.7398918731500457,
+            "final_pct": 1.7076593738741819,
+            "mean_pct": 0.8647595237667468
+          }
+        },
+        "white_noise": {
+          "ekf": {
+            "rmse_pct": 0.632288884397242,
+            "max_abs_pct": 1.3991334778062,
+            "final_pct": -0.5464825001069096,
+            "mean_pct": -0.4119228985976795
+          },
+          "sigma_i_a": 0.0841390690899605,
+          "sigma_v_v": 0.005
+        }
+      },
+      "final_sigma_soc_pct": 0.2349820217737154
+    },
+    "HWFET:03-20-17_19.27 25degC_HWFTb_Pan18650PF.mat": {
+      "kind": "HWFET",
+      "hours": 2.1102777777777777,
+      "true_start": {
+        "rmse_pct": 1.091276870144571,
+        "max_abs_pct": 1.7361415264612434,
+        "final_pct": -1.7157204318554928,
+        "mean_pct": -0.9419931344587992
+      },
+      "wrong_start": {
+        "rmse_pct": 1.1993361550774628,
+        "max_abs_pct": 5.1071664194004995,
+        "final_pct": -1.7317402314996886,
+        "mean_pct": -1.0442628864910664
+      },
+      "wrong_start_offset": -0.3,
+      "converge_s_5pct": 1.0,
+      "converge_s_2pct": 1.0,
+      "robustness": {
+        "gain_plus5pct": {
+          "ekf": {
+            "rmse_pct": 2.7936193200433435,
+            "max_abs_pct": 4.144480301137832,
+            "final_pct": -1.4759935400637163,
+            "mean_pct": -2.5447494903253434
+          },
+          "cc": {
+            "rmse_pct": 4.425653437159273,
+            "max_abs_pct": 7.616152731165748,
+            "final_pct": -7.616152731165748,
+            "mean_pct": -3.7949977228804017
+          }
+        },
+        "gain_minus5pct": {
+          "ekf": {
+            "rmse_pct": 1.4789906095415564,
+            "max_abs_pct": 2.813124661068114,
+            "final_pct": -2.189297642305216,
+            "mean_pct": 0.6891234451496875
+          },
+          "cc": {
+            "rmse_pct": 1.0028938673340757,
+            "max_abs_pct": 1.7327752227052629,
+            "final_pct": 1.7043641895033823,
+            "mean_pct": 0.8637311746209213
+          }
+        },
+        "white_noise": {
+          "ekf": {
+            "rmse_pct": 1.0970860223962402,
+            "max_abs_pct": 1.6929134946416875,
+            "final_pct": -1.5919805044053632,
+            "mean_pct": -0.9479677800739278
+          },
+          "sigma_i_a": 0.0840732880575982,
+          "sigma_v_v": 0.005
+        }
+      },
+      "final_sigma_soc_pct": 0.2229337165232635
+    }
+  },
+  "summary": {
+    "UDDS": {
+      "rmse_true_start_pct": 0.639966849620539,
+      "rmse_wrong_start_pct": 0.6448554405003437,
+      "converge_s_2pct": [
+        2.0
+      ],
+      "rmse_noise_pct": 0.6617483535861317
+    },
+    "US06": {
+      "rmse_true_start_pct": 3.2125633539445837,
+      "rmse_wrong_start_pct": 3.371964006010857,
+      "converge_s_2pct": [
+        null
+      ],
+      "rmse_noise_pct": 3.2279624224864714
+    },
+    "HWFET": {
+      "rmse_true_start_pct": 0.8630534602320714,
+      "rmse_wrong_start_pct": 0.9551579358893738,
+      "converge_s_2pct": [
+        2.0,
+        1.0
+      ],
+      "rmse_noise_pct": 0.864687453396741
+    }
+  },
+  "python_us_per_update": 5.5820650220517445
+}
