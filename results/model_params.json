@@ -453,6 +453,10 @@
   "model": "soc_dependent",
   "ocv_info": {
     "method": "mean of C/20 discharge and charge",
-    "ocv_spline_rmse_mv": 0.8294986807302444
+    "ocv_spline_rmse_mv": 0.8294986807302444,
+    "sources": {
+      "chg": "05-08-17_13.26 C20 OCV Test_C20_25dC.mat",
+      "dis": "05-08-17_13.26 C20 OCV Test_C20_25dC.mat"
+    }
   }
 }

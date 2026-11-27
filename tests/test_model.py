@@ -128,3 +128,16 @@ def test_fit_with_unlogged_gaps_recovers_charge(ocv):
     assert rmse < 2.0
     assert np.allclose(dq, 2.9 * 360 / 3600, rtol=0.05)  # 360 s at 2.9 A each
     assert p.tau1 == pytest.approx(8.0, rel=0.2)
+
+
+def test_choose_hppc_prefers_pulse_file(tmp_path):
+    import scipy.io
+    from soc_ekf.fitting import choose_hppc
+    paths = []
+    for name, n in (("x 10degC_dis5_10p.mat", 5000), ("x 10degC_5Pulse_HPPC.mat", 1000)):
+        p = tmp_path / "10degC" / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        scipy.io.savemat(p, {"meas": {"Time": np.arange(n) * 1.0, "Voltage": np.full(n, 3.7),
+                                      "Current": np.zeros(n), "Ah": np.zeros(n)}})
+        paths.append(p)
+    assert "Pulse" in choose_hppc(paths).path.name  # even though the step-discharge file is longer

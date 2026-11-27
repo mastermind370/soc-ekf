@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time
 from pathlib import Path
 
 import matplotlib
@@ -25,24 +24,13 @@ import numpy as np  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from soc_ekf.data import NOMINAL_CAPACITY_AH, classify, find_files, load  # noqa: E402
+from soc_ekf.data import load  # noqa: E402
+from soc_ekf.fitting import KNOTS, c20_capacity_ocv, choose_hppc, fit_hppc, pick  # noqa: E402
 from soc_ekf.model import (  # noqa: E402
-    capacity_and_ocv, discharge_window_end, fill_gaps, fit_ecm, initial_soc, low_rate_segments,
-    ocv_gap_guess, params_at_bounds, prepare, save_params, simulate, soc_zoh, voltage_errors_mv,
+    fill_gaps, initial_soc, prepare, save_params, simulate, soc_zoh, voltage_errors_mv,
 )
 
-ONE_C = NOMINAL_CAPACITY_AH  # 1C step between HPPC pulse groups [A]
-KNOTS = (0.0, 0.1, 0.2, 0.4, 0.6, 0.8, 1.0)
 DRIVE = ("UDDS", "US06", "HWFET", "LA92")
-
-
-def pick(root, kind, temp):
-    out = []
-    for p in find_files(root):
-        k, T, cond = classify(p)
-        if k == kind and T == temp and cond == "const" and "end" not in str(p).lower():
-            out.append(p)
-    return out
 
 
 def main() -> None:
@@ -54,67 +42,25 @@ def main() -> None:
     (ROOT / "plots").mkdir(exist_ok=True)
 
     # ---------------------------------------------------------- 1. capacity + OCV from C/20
-    segs, src = {}, {}
-    for p in pick(a.root, "C20", T):
-        df = load(p).df
-        s = low_rate_segments(df["t_s"].to_numpy(), df["i"].to_numpy(), df["v"].to_numpy())
-        for k, seg in s.items():
-            if k not in segs or seg["ah"] > segs[k]["ah"]:
-                segs[k], src[k] = seg, p.name
-    if "dis" not in segs:
+    c20 = c20_capacity_ocv(pick(a.root, "C20", T))
+    if c20 is None:
         sys.exit("No C/20 discharge segment found. Paste me: ls -R data/raw | grep -i -E 'c20|ocv'")
-    Q, ocv, ocv_info = capacity_and_ocv(segs)
+    Q, ocv, ocv_info = c20
+    src = ocv_info["sources"]
     print(f"[C/20] capacity = {Q:.4f} Ah  ({ocv_info['method']}; dis from {src.get('dis')}, chg from {src.get('chg')})")
     print(f"[C/20] OCV spline fit RMSE = {ocv_info['ocv_spline_rmse_mv']:.2f} mV")
 
     # ---------------------------------------------------------- 2. HPPC fit
-    hppc = [load(p) for p in pick(a.root, "HPPC", T)]
-    if not hppc:
+    rec = choose_hppc(pick(a.root, "HPPC", T))
+    if rec is None:
         sys.exit("No HPPC file found. Paste me: ls -R data/raw | grep -i -E 'pulse|hppc'")
-    rec = max(hppc, key=lambda r: len(r.df))
-    h = prepare(rec.df, rec.raw_sign)
-    dt, t, i, v, gaps, valid = h["dt"], h["t"], h["i"], h["v"], h["gaps"], h["valid"]
-    soc0 = initial_soc(v[0], i[0], ocv)
-    dq_tst = np.array(h["dq_tester"])
-    print(f"[HPPC] {rec.path.name}: {t[-1]/3600:.2f} h on a {dt:g} s grid, SoC0 = {soc0:.3f}")
-    print(f"[HPPC] logged current removes {np.sum(i) * dt / 3600:.3f} Ah; {len(gaps)} logging gaps "
-          f"({sum(h['gap_s'])/3600:.2f} h) where the tester Ah counter moved {dq_tst.sum():.3f} Ah")
-
-    free = None
-    if dq_tst.sum() > 0.05 * Q:
-        gap_mode = "tester Ah"
-        i = fill_gaps(i, gaps, dq_tst, dt, ONE_C)
-    else:
-        gap_mode = "fitted"
-        free = gaps
-    soc = soc_zoh(i, dt, Q, soc0)
-    end = discharge_window_end(i, soc) if free is None else len(t)
-    t, i, v, soc, valid = t[:end], i[:end], v[:end], soc[:end], valid[:end]
-    print(f"[HPPC] gap charge: {gap_mode}; fitting {valid.mean()*100:.0f}% of samples")
-
-    fits, gap_dq = {}, {}
-    dq0 = ocv_gap_guess(v, gaps, ocv, Q) if free else None
-    for name, knots in (("constant", (0.0, 1.0)), ("soc_dependent", KNOTS)):
-        t0 = time.perf_counter()
-        init = fits["constant"][0] if name == "soc_dependent" else None
-        p, rmse, dq = fit_ecm(dt, i, v, soc, ocv, Q, knots, init=init, valid=valid, free_gaps=free, gap_dq0=dq0, gap_rate_a=ONE_C)
-        if dq is not None:
-            dq0 = dq
-        fits[name], gap_dq[name] = (p, rmse), dq
-        print(f"[HPPC] {name:13s} fit RMSE = {rmse:6.2f} mV   tau1 = {p.tau1:6.2f} s  tau2 = {p.tau2:7.1f} s"
-              f"   ({time.perf_counter()-t0:.1f} s)")
-        hits = params_at_bounds(p)
-        if hits:
-            print(f"        WARNING: at bounds -> {', '.join(hits)}")
+    H = fit_hppc(rec, ocv, Q)
+    fits, gap_dq, gap_mode = H["fits"], H["gap_dq"], H["gap_mode"]
+    dt, t, i, v, soc, valid, dq_tst = H["dt"], H["t"], H["i"], H["v"], H["soc"], H["valid"], H["dq_tester"]
+    gaps = list(range(H["n_gaps"]))
     p_soc = fits["soc_dependent"][0]
     for k in ("r0", "r1", "r2"):
         print(f"        {k} [mOhm] at SoC {list(KNOTS)}: " + " ".join(f"{1e3*x:.1f}" for x in getattr(p_soc, k)))
-    if gap_dq["soc_dependent"] is not None:
-        dq = np.array(gap_dq["soc_dependent"])
-        i = fill_gaps(i, gaps, dq, dt, ONE_C)
-        soc = soc_zoh(i, dt, Q, soc0)
-        print(f"        fitted gap charge [Ah]: " + " ".join(f"{x:.3f}" for x in dq) + f"  (sum {dq.sum():.3f})")
-    print(f"[HPPC] SoC range covered: {soc.max():.3f} -> {soc.min():.3f}")
 
     # ---------------------------------------------------------- 3. validate on held-out drive cycles
     val, traces = {}, {}

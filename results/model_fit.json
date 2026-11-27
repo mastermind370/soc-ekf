@@ -3,7 +3,11 @@
   "capacity_ah": 2.9949791385194233,
   "ocv": {
     "method": "mean of C/20 discharge and charge",
-    "ocv_spline_rmse_mv": 0.8294986807302444
+    "ocv_spline_rmse_mv": 0.8294986807302444,
+    "sources": {
+      "chg": "05-08-17_13.26 C20 OCV Test_C20_25dC.mat",
+      "dis": "05-08-17_13.26 C20 OCV Test_C20_25dC.mat"
+    }
   },
   "hppc_file": "03-11-17_08.47 25degC_5Pulse_HPPC_Pan18650PF.mat",
   "hppc_grid_dt_s": 1.0,
