@@ -32,7 +32,7 @@ def available_temps(root) -> list[float]:
     return sorted({classify(p)[1] for p in find_files(root) if classify(p)[1] is not None and classify(p)[2] == "const"})
 
 
-def c20_capacity_ocv(paths):
+def c20_capacity_ocv(paths, branch: str = "mean"):
     segs, src = {}, {}
     for p in paths:
         df = load(p).df
@@ -42,7 +42,7 @@ def c20_capacity_ocv(paths):
                 segs[k], src[k] = seg, Path(p).name
     if "dis" not in segs:
         return None
-    Q, ocv, info = capacity_and_ocv(segs)
+    Q, ocv, info = capacity_and_ocv(segs, branch)
     info["sources"] = src
     return Q, ocv, info
 

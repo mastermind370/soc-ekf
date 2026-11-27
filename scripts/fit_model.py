@@ -30,42 +30,27 @@ from soc_ekf.model import (  # noqa: E402
     fill_gaps, initial_soc, prepare, save_params, simulate, soc_zoh, voltage_errors_mv,
 )
 
-DRIVE = ("UDDS", "US06", "HWFET", "LA92")
+DRIVE = ("UDDS", "US06", "HWFET", "LA92", "MIX", "NN")
+SELECT_KINDS = ("LA92", "MIX", "NN")  # model choice uses these only; UDDS/US06/HWFET are the EKF test set
+BRANCHES = ("discharge", "mean")
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--temp", type=float, default=25.0)
-    ap.add_argument("--root", default=str(ROOT / "data" / "raw"))
-    a = ap.parse_args()
-    T = a.temp
-    (ROOT / "plots").mkdir(exist_ok=True)
-
-    # ---------------------------------------------------------- 1. capacity + OCV from C/20
-    c20 = c20_capacity_ocv(pick(a.root, "C20", T))
+def run_branch(root, T, branch, hppc_rec, drive):
+    """Capacity + OCV (one branch), HPPC fit, voltage validation on every drive cycle."""
+    c20 = c20_capacity_ocv(pick(root, "C20", T), branch)
     if c20 is None:
-        sys.exit("No C/20 discharge segment found. Paste me: ls -R data/raw | grep -i -E 'c20|ocv'")
+        return None
     Q, ocv, ocv_info = c20
     src = ocv_info["sources"]
     print(f"[C/20] capacity = {Q:.4f} Ah  ({ocv_info['method']}; dis from {src.get('dis')}, chg from {src.get('chg')})")
     print(f"[C/20] OCV spline fit RMSE = {ocv_info['ocv_spline_rmse_mv']:.2f} mV")
-
-    # ---------------------------------------------------------- 2. HPPC fit
-    rec = choose_hppc(pick(a.root, "HPPC", T))
-    if rec is None:
-        sys.exit("No HPPC file found. Paste me: ls -R data/raw | grep -i -E 'pulse|hppc'")
-    H = fit_hppc(rec, ocv, Q)
-    fits, gap_dq, gap_mode = H["fits"], H["gap_dq"], H["gap_mode"]
-    dt, t, i, v, soc, valid, dq_tst = H["dt"], H["t"], H["i"], H["v"], H["soc"], H["valid"], H["dq_tester"]
-    gaps = list(range(H["n_gaps"]))
-    p_soc = fits["soc_dependent"][0]
+    H = fit_hppc(hppc_rec, ocv, Q)
+    fits = H["fits"]
     for k in ("r0", "r1", "r2"):
-        print(f"        {k} [mOhm] at SoC {list(KNOTS)}: " + " ".join(f"{1e3*x:.1f}" for x in getattr(p_soc, k)))
-
-    # ---------------------------------------------------------- 3. validate on held-out drive cycles
+        print(f"        {k} [mOhm] at SoC {list(KNOTS)}: " + " ".join(f"{1e3*x:.1f}" for x in getattr(fits['soc_dependent'][0], k)))
     val, traces = {}, {}
-    for kind in DRIVE:
-        for path in pick(a.root, kind, T):
+    for kind, paths in drive.items():
+        for path in paths:
             r = load(path)
             d = prepare(r.df, r.raw_sign, dt=0.1)
             ii = fill_gaps(d["i"], d["gaps"], d["dq_tester"], 0.1)
@@ -78,26 +63,67 @@ def main() -> None:
                 vm = simulate(0.1, ii, si, p, ocv)[0]
                 row[name] = voltage_errors_mv(vm, vi, valid=ok)
                 row[name + "_soc_ge_10pct"] = voltage_errors_mv(vm, vi, si, 0.10, ok)
-                if name == "soc_dependent":
+                if name == "soc_dependent" and kind in ("UDDS", "US06", "HWFET", "LA92"):
                     traces[path.name] = (kind, d["t"], vi, vm)
             val[f"{kind}:{path.name}"] = row
-            print(f"[VAL]  {kind:6s} {path.name[:42]:42s} gaps={row['n_gaps']} SoC {s0:.2f}->{si[-1]:.2f}"
-                  f"  RMSE const={row['constant']['rmse_mv']:6.1f}  soc-dep={row['soc_dependent']['rmse_mv']:6.1f} mV"
-                  f"  (SoC>=10%: {row['soc_dependent_soc_ge_10pct']['rmse_mv']:.1f})")
+            print(f"[VAL]  {kind:6s} {path.name[:42]:42s} SoC {s0:.2f}->{si[-1]:.2f}"
+                  f"  RMSE const={row['constant']['rmse_mv']:6.1f}  soc-dep={row['soc_dependent']['rmse_mv']:6.1f} mV")
+    return {"Q": Q, "ocv": ocv, "ocv_info": ocv_info, "H": H, "fits": fits, "val": val, "traces": traces}
 
-    best = min(fits, key=lambda n: np.mean([r[n]["rmse_mv"] for r in val.values()]) if val else fits[n][1])
-    print(f"\nselected model for the EKF: {best}")
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--temp", type=float, default=25.0)
+    ap.add_argument("--root", default=str(ROOT / "data" / "raw"))
+    a = ap.parse_args()
+    T = a.temp
+    (ROOT / "plots").mkdir(exist_ok=True)
+
+    # ---------------------------------------------------------- 1-3 for each OCV branch
+    hppc_rec = choose_hppc(pick(a.root, "HPPC", T))
+    if hppc_rec is None:
+        sys.exit("No HPPC file found. Paste me: ls -R data/raw | grep -i -E 'pulse|hppc'")
+    drive = {kind: pick(a.root, kind, T) for kind in DRIVE}
+    runs = {}
+    for branch in BRANCHES:
+        print(f"\n========== OCV branch: {branch}")
+        runs[branch] = run_branch(a.root, T, branch, hppc_rec, drive)
+        if runs[branch] is None:
+            sys.exit("No C/20 discharge segment found. Paste me: ls -R data/raw | grep -i -E 'c20|ocv'")
+
+    # ---------------------------------------------------------- choose OCV branch + R type on tuning cycles only
+    cands = {}
+    for branch, R in runs.items():
+        for name in R["fits"]:
+            sel = [r[name]["rmse_mv"] for k, r in R["val"].items() if k.split(":")[0] in SELECT_KINDS]
+            allv = [r[name]["rmse_mv"] for r in R["val"].values()]
+            cands[(branch, name)] = float(np.mean(sel)) if sel else (float(np.mean(allv)) if allv else R["fits"][name][1])
+    used = "LA92/mixed cycles" if any(k.split(":")[0] in SELECT_KINDS for k in runs[BRANCHES[0]]["val"]) else \
+        "all drive cycles (no LA92/mixed files found)"
+    print(f"\nmodel selection on {used} (UDDS/US06/HWFET stay held out):")
+    for (branch, name), score in sorted(cands.items(), key=lambda x: x[1]):
+        print(f"   {branch:9s} OCV, {name:13s} R: {score:6.1f} mV")
+    branch, best = min(cands, key=cands.get)
+    print(f"selected: {branch} OCV, {best} R")
+    R = runs[branch]
+    Q, ocv, ocv_info, fits, val, traces = R["Q"], R["ocv"], R["ocv_info"], R["fits"], R["val"], R["traces"]
+    H = R["H"]
+    dt, t, i, v, soc, valid = H["dt"], H["t"], H["i"], H["v"], H["soc"], H["valid"]
+    p_soc = fits["soc_dependent"][0]
 
     save_params(ROOT / "results" / "model_params.json", ocv, fits[best][0],
-                {"temp_c": T, "model": best, "ocv_info": ocv_info})
+                {"temp_c": T, "model": best, "ocv_branch": branch, "ocv_info": ocv_info})
     out = {
-        "temp_c": T, "capacity_ah": Q, "ocv": ocv_info, "hppc_file": rec.path.name,
-        "hppc_grid_dt_s": dt, "hppc_gap_mode": gap_mode, "hppc_n_gaps": len(gaps),
-        "hppc_gap_dq_ah": gap_dq["soc_dependent"] if gap_dq["soc_dependent"] is not None else dq_tst.tolist(),
+        "temp_c": T, "capacity_ah": Q, "ocv": ocv_info, "ocv_branch": branch, "hppc_file": hppc_rec.path.name,
+        "hppc_grid_dt_s": dt, "hppc_gap_mode": H["gap_mode"], "hppc_n_gaps": H["n_gaps"],
+        "hppc_gap_dq_ah": H["gap_dq"]["soc_dependent"] if H["gap_dq"]["soc_dependent"] is not None else H["dq_tester"].tolist(),
         "hppc_soc_range": [float(soc.min()), float(soc.max())],
         "hppc_fit_rmse_mv": {n: f[1] for n, f in fits.items()},
         "params": {n: f[0].to_dict() for n, f in fits.items()},
-        "selected": best, "validation": val,
+        "bounds_warnings": H["warnings"],
+        "selected": best, "selection_set": used,
+        "selection_rmse_mv": {f"{b}/{n}": v for (b, n), v in cands.items()},
+        "validation": val,
     }
     (ROOT / "results" / "model_fit.json").write_text(json.dumps(out, indent=2))
     print("wrote results/model_params.json, results/model_fit.json")

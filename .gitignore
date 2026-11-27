@@ -9,3 +9,5 @@ build/
 
 c/build/
 results/c/
+plots/inspect_*.png
+*_layout.txt

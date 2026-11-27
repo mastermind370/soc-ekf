@@ -92,7 +92,16 @@ def block_model():
         return missing("python scripts/fit_model.py")
     sel = m["selected"]
     p = m["params"][sel]
-    head = (f"Capacity (C/20, 25 °C): **{m['capacity_ah']:.3f} Ah** · OCV spline fit: {m['ocv']['ocv_spline_rmse_mv']:.2f} mV · "
+    branch = m.get("ocv_branch")
+    sel_txt = ""
+    if m.get("selection_rmse_mv"):
+        sel_txt = ("\n\nModel choice on " + m.get("selection_set", "tuning cycles") + " only (voltage RMSE, mV): " +
+                   ", ".join(f"{k.replace('/', ' OCV + ').replace('_', '-')} R {v:.1f}" for k, v in
+                             sorted(m["selection_rmse_mv"].items(), key=lambda x: x[1])) + ".")
+    if m.get("bounds_warnings", {}).get(sel):
+        sel_txt += f" Parameters at fit bounds: {', '.join(m['bounds_warnings'][sel])}."
+    head = (f"Capacity (C/20, 25 °C): **{m['capacity_ah']:.3f} Ah** · OCV: {m['ocv']['method']}"
+            f"{' (' + branch + ' branch)' if branch else ''} · OCV spline fit: {m['ocv']['ocv_spline_rmse_mv']:.2f} mV · "
             f"HPPC fit ({sel.replace('_', '-')} R): {m['hppc_fit_rmse_mv'][sel]:.1f} mV · "
             f"τ1 = {p['tau1']:.1f} s, τ2 = {p['tau2']:.0f} s · HPPC logging gaps: {m.get('hppc_n_gaps', '–')} "
             f"(charge from {m.get('hppc_gap_mode', '–')})")
@@ -101,7 +110,7 @@ def block_model():
         kind = k.split(":", 1)[0]
         rows.append([kind + short(r["file"]), f(r["constant"]["rmse_mv"], 1), f(r["soc_dependent"]["rmse_mv"], 1),
                      f(r[sel]["max_abs_mv"], 0)])
-    return head + "\n\n" + table(["Held-out cycle", "Voltage RMSE, constant R [mV]", "Voltage RMSE, SoC-dependent R [mV]",
+    return head + sel_txt + "\n\n" + table(["Drive cycle", "Voltage RMSE, constant R [mV]", "Voltage RMSE, SoC-dependent R [mV]",
                                   "Max error, selected [mV]"], rows)
 
 

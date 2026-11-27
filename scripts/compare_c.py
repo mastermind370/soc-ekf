@@ -14,6 +14,7 @@ import argparse
 import json
 import re
 import struct
+import zlib
 import subprocess
 import sys
 from pathlib import Path
@@ -86,7 +87,7 @@ def main() -> None:
     for c in load_cycles(a.root, a.temp, ocv, p.capacity_ah, TEST_KINDS):
         t, ia, inow, v, sref, ok = decimate(c.t, c.i, c.v, c.soc_ref, c.valid, c.dt, dt)
         s0 = float(sref[0])
-        tag = f"{c.kind}_{abs(hash(c.name)) % 10000:04d}"
+        tag = f"{c.kind}_{zlib.crc32(c.name.encode()) % 10000:04d}"  # stable across runs
         write_trace(work / f"{tag}.bin", ia, inow, v, s0, s0 - a.wrong_start)
         out_txt = run_bin(bdir / "ekf_trace", work / "model.bin", work / f"{tag}.bin", work / f"{tag}_out.bin")
         m = re.search(r"ns_per_update_q ([\d.]+) ns_per_update_f ([\d.]+)", out_txt)

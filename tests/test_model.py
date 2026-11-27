@@ -141,3 +141,22 @@ def test_choose_hppc_prefers_pulse_file(tmp_path):
                                       "Current": np.zeros(n), "Ah": np.zeros(n)}})
         paths.append(p)
     assert "Pulse" in choose_hppc(paths).path.name  # even though the step-discharge file is longer
+
+
+def test_c20_discharge_branch_keeps_the_discharge_curve():
+    Q, I, dt = 2.8, 0.14, 10.0
+    n = int(Q / I * 3600 / dt)
+    t = np.arange(n) * dt
+    soc_d = 1 - cum_ah(t, np.full(n, I)) / Q
+    soc_c = cum_ah(t, np.full(n, I)) / Q
+    hyst = 0.02  # discharge branch 20 mV below the mean, charge branch 20 mV above
+    tt = np.concatenate([t, t[-1] + 3600 + t])
+    ii = np.concatenate([np.full(n, I), np.full(n, -I)])
+    vv = np.concatenate([true_ocv(soc_d) - hyst, true_ocv(soc_c) + hyst])
+    segs = low_rate_segments(tt, ii, vv)
+    g = np.linspace(0.1, 0.9, 30)
+    _, mean_tab, info_m = capacity_and_ocv(segs, "mean")
+    _, dis_tab, info_d = capacity_and_ocv(segs, "discharge")
+    assert np.max(np.abs(mean_tab(g) - true_ocv(g))) < 3e-3
+    assert np.max(np.abs(dis_tab(g) - (true_ocv(g) - hyst))) < 3e-3
+    assert info_d["branch"] == "discharge" and info_m["branch"] == "mean"

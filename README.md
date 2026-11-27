@@ -9,12 +9,12 @@ for a microcontroller BMS. Everything is fitted and tested on real lab data from
 <!-- BEGIN:headline -->
 | Cycle (held out, 25 °C) | EKF RMSE | EKF RMSE, start 30% low | EKF converges to ±2% | Coulomb counting, start 30% low | Voltage lookup |
 |---|---|---|---|---|---|
-| UDDS | 0.64% | 0.64% | 2 s | 31.5% | 8.3% |
-| US06 | 3.21% | 3.37% | never | 31.5% | 19.8% |
-| HWFET (a) | 0.63% | 0.71% | 2 s | 31.5% | 14.1% |
-| HWFET (b) | 1.09% | 1.20% | 1 s | 31.5% | 14.4% |
+| UDDS | 0.60% | 0.55% | 6 s | 31.5% | 6.5% |
+| US06 | 1.34% | 1.37% | 14 s | 31.5% | 18.0% |
+| HWFET (a) | 0.43% | 0.44% | 8 s | 31.5% | 12.0% |
+| HWFET (b) | 0.66% | 0.68% | never | 31.5% | 12.3% |
 
-Fixed-point C port: max difference from the float EKF **8.6e-06 % SoC** (RMS 3.2e-06 %), **81 ns per update** on an Apple M4 (double-precision C: 44 ns); estimated **654–1943 Cortex-M4 cycles** per update (op-count model, not measured on hardware).
+Fixed-point C port: max difference from the float EKF **1.3e-05 % SoC** (RMS 4.0e-06 %), **82 ns per update** on an Apple M4 (double-precision C: 44 ns); estimated **651–1936 Cortex-M4 cycles** per update (op-count model, not measured on hardware).
 <!-- END:headline -->
 
 All numbers in this README are written by `scripts/update_readme.py` from `results/*.json`.
@@ -40,9 +40,11 @@ flowchart LR
 ```
 
 **Model.** Terminal voltage `V = OCV(SoC) − R0(SoC)·I − v1 − v2`, with each RC pair `dv_k/dt = −v_k/τ_k + R_k(SoC)·I/τ_k`
-(I > 0 = discharge). OCV and capacity come from the C/20 test (mean of the discharge and charge curves, which cancels
-the IR drop and most hysteresis). R0, R1, R2 are piecewise-linear in SoC; τ1, τ2 are constants. They are fitted on the
-HPPC test only and validated on drive cycles the fit never saw.
+(I > 0 = discharge). Capacity and OCV come from the C/20 test. Two OCV curves are tried: the mean of the C/20
+discharge and charge curves (the hysteresis-free OCV), and the discharge curve alone (the hysteresis branch a cell rests
+on after discharging, which is what every test here does). R0, R1, R2 are piecewise-linear in SoC; τ1, τ2 are
+constants. They are fitted on the HPPC test only. The OCV curve and the R type are chosen on LA92 and the mixed drive
+cycles; UDDS, US06 and HWFET are never used for any fitting, tuning or model choice.
 
 **EKF.** State `[SoC, v1, v2]`, updating at 1 Hz. The predict step is exact discretisation of the model with the
 interval-mean current; the update compares measured and predicted voltage, with
@@ -73,15 +75,22 @@ full charge), with the measured C/20 capacity. The HPPC files leave out the 10%-
 
 ### Stage 2 — battery model
 <!-- BEGIN:model -->
-Capacity (C/20, 25 °C): **2.995 Ah** · OCV spline fit: 0.83 mV · HPPC fit (soc-dependent R): 21.3 mV · τ1 = 40.0 s, τ2 = 5000 s · HPPC logging gaps: 13 (charge from tester Ah)
+Capacity (C/20, 25 °C): **2.995 Ah** · OCV: C/20 discharge curve (discharge branch) · OCV spline fit: 0.52 mV · HPPC fit (soc-dependent R): 11.0 mV · τ1 = 28.0 s, τ2 = 5000 s · HPPC logging gaps: 13 (charge from tester Ah)
 
-| Held-out cycle | Voltage RMSE, constant R [mV] | Voltage RMSE, SoC-dependent R [mV] | Max error, selected [mV] |
+Model choice on LA92/mixed cycles only (voltage RMSE, mV): discharge OCV + soc-dependent R 41.7, mean OCV + soc-dependent R 111.1, mean OCV + constant R 120.7, discharge OCV + constant R 130.8. Parameters at fit bounds: tau2=5000, r1@0=0.5, r2@0=0.5, r2@0.1=0.5, r2@0.2=0.5, r2@0.4=0.0001, r2@1=0.0001.
+
+| Drive cycle | Voltage RMSE, constant R [mV] | Voltage RMSE, SoC-dependent R [mV] | Max error, selected [mV] |
 |---|---|---|---|
-| UDDS | 74.9 | 69.7 | 321 |
-| US06 | 190.1 | 175.0 | 868 |
-| HWFET (a) | 151.1 | 144.3 | 439 |
-| HWFET (b) | 148.5 | 140.2 | 427 |
-| LA92 | 103.4 | 91.8 | 439 |
+| UDDS | 78.7 | 35.4 | 394 |
+| US06 | 227.9 | 58.8 | 567 |
+| HWFET (a) | 175.9 | 48.3 | 349 |
+| HWFET (b) | 173.1 | 46.4 | 376 |
+| LA92 | 108.2 | 34.5 | 314 |
+| MIX | 140.4 | 48.2 | 465 |
+| MIX | 145.2 | 51.6 | 435 |
+| MIX | 130.3 | 33.6 | 305 |
+| MIX | 140.3 | 48.8 | 413 |
+| NN | 120.5 | 33.3 | 389 |
 <!-- END:model -->
 
 ### Stage 3 — baselines
@@ -90,23 +99,23 @@ RMSE / max error in % SoC. Coulomb counting uses the 2.9 Ah datasheet capacity; 
 
 | Cycle | Coulomb count | Coulomb count, wrong start | OCV(V) lookup | OCV(V + R0·I) lookup |
 |---|---|---|---|---|
-| UDDS | 1.69 / 2.9 | 31.47 / 32.9 | 8.29 / 32.6 | 5.63 / 25.5 |
-| US06 | 1.69 / 2.8 | 31.47 / 32.8 | 19.79 / 66.9 | 11.46 / 64.2 |
-| HWFET (a) | 1.72 / 3.0 | 31.49 / 33.0 | 14.08 / 29.6 | 9.23 / 28.0 |
-| HWFET (b) | 1.72 / 3.0 | 31.49 / 33.0 | 14.40 / 29.9 | 9.56 / 32.1 |
-| LA92 | 1.64 / 2.8 | 31.42 / 32.8 | 11.41 / 40.8 | 7.11 / 37.7 |
+| UDDS | 1.69 / 2.9 | 31.47 / 32.9 | 6.53 / 30.0 | 3.45 / 22.0 |
+| US06 | 1.69 / 2.8 | 31.47 / 32.8 | 18.00 / 64.3 | 9.39 / 62.0 |
+| HWFET (a) | 1.72 / 3.0 | 31.49 / 33.0 | 12.03 / 26.9 | 7.09 / 22.8 |
+| HWFET (b) | 1.72 / 3.0 | 31.49 / 33.0 | 12.35 / 27.3 | 7.42 / 25.9 |
+| LA92 | 1.64 / 2.8 | 31.42 / 32.8 | 9.74 / 39.5 | 4.97 / 32.5 |
 <!-- END:baselines -->
 
 ### Stage 4 — EKF
 <!-- BEGIN:ekf -->
-EKF at 1 Hz, tuned by grid search on LA92, MIX, NN only: σ_v = 40 mV, σ_SoC,proc = 1e-06 /√s, σ_RC,proc = 1 mV/√s.
+EKF at 1 Hz, tuned by grid search on LA92, MIX, NN only: σ_v = 80 mV, σ_SoC,proc = 1e-06 /√s, σ_RC,proc = 1 mV/√s.
 
 | Cycle | RMSE / max, correct start | RMSE / max, 30% low start | → ±5% | → ±2% | Current +5% (CC) | Current −5% (CC) | Noise* |
 |---|---|---|---|---|---|---|---|
-| UDDS | 0.64 / 1.9 | 0.64 / 5.9 | 1 s | 2 s | 2.48 (4.35) | 2.43 (0.98) | 0.66 |
-| US06 | 3.21 / 4.1 | 3.37 / 5.5 | 1 s | never | 4.74 (4.33) | 2.13 (0.99) | 3.23 |
-| HWFET (a) | 0.63 / 1.3 | 0.71 / 5.9 | 1 s | 2 s | 2.34 (4.43) | 1.76 (1.00) | 0.63 |
-| HWFET (b) | 1.09 / 1.7 | 1.20 / 5.1 | 1 s | 1 s | 2.79 (4.43) | 1.48 (1.00) | 1.10 |
+| UDDS | 0.60 / 1.9 | 0.55 / 3.7 | 0 s | 6 s | 1.62 (4.35) | 2.62 (0.98) | 0.57 |
+| US06 | 1.34 / 2.5 | 1.37 / 3.3 | 0 s | 14 s | 2.87 (4.33) | 1.71 (0.99) | 1.29 |
+| HWFET (a) | 0.43 / 2.1 | 0.44 / 3.7 | 0 s | 8 s | 1.93 (4.43) | 2.14 (1.00) | 0.43 |
+| HWFET (b) | 0.66 / 2.7 | 0.68 / 2.9 | 0 s | never | 2.32 (4.43) | 1.86 (1.00) | 0.66 |
 
 % SoC. *Gaussian noise, σ = 5% of the cycle's RMS current plus 5 mV on voltage.
 <!-- END:ekf -->
@@ -115,12 +124,12 @@ EKF at 1 Hz, tuned by grid search on LA92, MIX, NN only: σ_v = 40 mV, σ_SoC,pr
 <!-- BEGIN:cport -->
 | Cycle | Updates | max \|fixed − float\| [% SoC] | RMS | max, wrong start | RMSE float | RMSE fixed | ns fixed (M4 Mac) | ns double |
 |---|---|---|---|---|---|---|---|---|
-| UDDS | 22448 | 7.4e-06 | 2.9e-06 | 9.1e-06 | 0.64 | 0.64 | 82 | 45 |
-| US06 | 4819 | 7.8e-06 | 4.8e-06 | 1.2e-05 | 3.21 | 3.21 | 81 | 44 |
-| HWFET (a) | 7613 | 5.2e-06 | 1.9e-06 | 1.8e-05 | 0.63 | 0.63 | 81 | 44 |
-| HWFET (b) | 7598 | 8.6e-06 | 2.2e-06 | 1.3e-05 | 1.09 | 1.09 | 81 | 44 |
+| UDDS | 22448 | 1.3e-05 | 6.8e-06 | 1.1e-05 | 0.60 | 0.60 | 82 | 45 |
+| US06 | 4819 | 5.2e-06 | 2.8e-06 | 3.0e-06 | 1.34 | 1.34 | 81 | 44 |
+| HWFET (a) | 7613 | 3.4e-06 | 1.5e-06 | 3.2e-06 | 0.43 | 0.43 | 82 | 44 |
+| HWFET (b) | 7598 | 6.2e-06 | 2.8e-06 | 4.5e-06 | 0.66 | 0.66 | 82 | 44 |
 
-Ops per update: 39 mul, 85 add, 48 shift, 3 div, 24 load, 116 branch. Cortex-M4 estimate: **654–1943 cycles** (3.9–11.57 µs at 168 MHz) from per-op cost ranges in `scripts/compare_c.py` — an estimate, not a hardware measurement.
+Ops per update: 39 mul, 84 add, 47 shift, 3 div, 24 load, 116 branch. Cortex-M4 estimate: **651–1936 cycles** (3.87–11.52 µs at 168 MHz) from per-op cost ranges in `scripts/compare_c.py` — an estimate, not a hardware measurement.
 <!-- END:cport -->
 
 ### Stage 6 — robustness
@@ -129,40 +138,36 @@ Ops per update: 39 mul, 85 add, 48 shift, 3 div, 24 load, 116 branch. Cortex-M4 
 
 | Temp | EKF, 25 °C model | EKF, per-temperature model | …start 30% low | Coulomb counting | Truth SoC at cutoff | HPPC fit [mV] |
 |---|---|---|---|---|---|---|
-| -20 °C | 62.94 | 11.27 | 11.35 | 1.00 | 50% | 33.9 |
-| -10 °C | 38.07 | 15.74 | 15.73 | 0.93 | 55% | 24.3 |
-| 0 °C | 7.30 | 3.68 | 3.81 | 1.49 | 23% | 20.5 |
-| 10 °C | 6.57 | 4.21 | 4.16 | 1.44 | 36% | 19.1 |
-| 25 °C | 1.39 | 1.39 | 1.48 | 1.70 | 11% | – |
+| -20 °C | 18.66 | 9.65 | 9.75 | 1.00 | 51% | 21.8 |
+| -10 °C | 6.94 | 13.81 | 13.84 | 0.93 | 55% | 15.7 |
+| 0 °C | 10.30 | 3.68 | 3.75 | 1.49 | 23% | 13.9 |
+| 10 °C | 3.30 | 3.58 | 3.56 | 1.44 | 36% | 10.9 |
+| 25 °C | 0.76 | 0.76 | 0.76 | 1.70 | 11% | – |
 
 **Aging** — capacity 2.995 → 2.396 Ah (20.0% fade; ASSUMED 20% fade (no end-of-tests C/20 file found)). Emulated on the 25 °C cycles: the estimators keep the fresh capacity.
 
 | Cycle | EKF, right capacity | EKF, fresh capacity | Coulomb counting, fresh capacity |
 |---|---|---|---|
-| UDDS | 0.64 | 8.98 | 8.96 |
-| US06 | 3.21 | 6.31 | 8.97 |
-| HWFET (a) | 0.63 | 8.90 | 9.16 |
-| HWFET (b) | 1.09 | 8.28 | 9.15 |
+| UDDS | 0.60 | 9.85 | 8.96 |
+| US06 | 1.34 | 8.19 | 8.97 |
+| HWFET (a) | 0.43 | 9.79 | 9.16 |
+| HWFET (b) | 0.66 | 9.48 | 9.15 |
 
 **Current-sensor bias** — SoC RMSE %, EKF (coulomb counting)
 
 | Offset | UDDS | US06 | HWFET (a) | HWFET (b) |
 |---|---|---|---|---|
-| -100mA | 10.65 (10.73) | 2.87 (0.99) | 2.79 (2.50) | 2.44 (2.49) |
-| -50mA | 4.90 (4.52) | 3.02 (0.34) | 1.28 (0.39) | 1.08 (0.39) |
-| -20mA | 1.93 (0.80) | 3.14 (1.14) | 0.60 (0.87) | 0.80 (0.87) |
-| +20mA | 1.91 (4.17) | 3.34 (2.21) | 1.06 (2.56) | 1.56 (2.55) |
-| +50mA | 4.32 (7.89) | 3.55 (3.00) | 1.87 (3.82) | 2.36 (3.81) |
-| +100mA | 7.97 (14.10) | 4.02 (4.34) | 3.23 (5.92) | 3.69 (5.91) |
+| -100mA | 11.11 (10.73) | 1.82 (0.99) | 3.31 (2.50) | 3.00 (2.49) |
+| -50mA | 5.44 (4.52) | 1.35 (0.34) | 1.64 (0.39) | 1.36 (0.39) |
+| -20mA | 2.38 (0.80) | 1.25 (1.14) | 0.78 (0.87) | 0.65 (0.87) |
+| +20mA | 1.40 (4.17) | 1.54 (2.21) | 0.71 (2.56) | 1.10 (2.55) |
+| +50mA | 3.86 (7.89) | 1.92 (3.00) | 1.52 (3.82) | 1.92 (3.81) |
+| +100mA | 7.72 (14.10) | 2.62 (4.34) | 2.92 (5.92) | 3.32 (5.91) |
 <!-- END:robust -->
 
 ## Plots
 
 <!-- BEGIN:plots -->
-**Drive cycles at 25 °C: voltage, current, reference SoC**
-
-![Drive cycles at 25 °C: voltage, current, reference SoC](plots/stage1_drive_cycles_25C.png)
-
 **OCV curve and slope from the C/20 test**
 
 ![OCV curve and slope from the C/20 test](plots/stage2_ocv_25C.png)
@@ -185,7 +190,7 @@ Ops per update: 39 mul, 85 add, 48 shift, 3 div, 24 load, 116 branch. Cortex-M4 
 
 **Fixed-point C vs float Python**
 
-![Fixed-point C vs float Python](plots/stage5_US06_3810.png)
+![Fixed-point C vs float Python](plots/stage5_US06_3250.png)
 
 **SoC RMSE vs temperature**
 
@@ -203,6 +208,8 @@ Ops per update: 39 mul, 85 add, 48 shift, 3 div, 24 load, 116 branch. Cortex-M4 
 - **Model error grows with current.** On aggressive cycles (US06, 15–20 A peaks) the 2-RC model's voltage error maps
   to several % of SoC in the flat middle of the OCV curve. Current-dependent measurement noise or a hysteresis state
   would be the next step.
+- **No hysteresis state.** The model uses one OCV branch; a one-state hysteresis model (Plett) would handle mixed
+  charge/discharge use better.
 - **OCV is from 25 °C only**; other temperatures refit R and τ but keep the 25 °C OCV and capacity.
 - **Aging is emulated**: the dataset has no drive cycles on the aged cell, so the test gives the estimators the
   fresh capacity on the 25 °C cycles, using the measured fade.

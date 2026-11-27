@@ -98,14 +98,18 @@ def low_rate_segments(t, i, v, max_abs_a: float = 0.5, min_ah: float = 1.0):
     return out
 
 
-def capacity_and_ocv(segments: dict):
-    """Capacity = C/20 discharge Ah. OCV = mean of discharge and charge curves (cancels IR + most hysteresis)."""
+def capacity_and_ocv(segments: dict, branch: str = "mean"):
+    """Capacity = C/20 discharge Ah. OCV curve from the C/20 test:
+    branch="mean"      mean of discharge and charge curves (cancels IR and most hysteresis: the 'true' OCV)
+    branch="discharge" discharge curve only (the hysteresis branch a cell sits on after discharging, which is
+                       what every HPPC and drive-cycle test here does); IR drop at C/20 is a few mV.
+    """
     dis = segments["dis"]
     Q = dis["ah"]
     soc_d = 1.0 - cum_ah(dis["t"], dis["i"]) / Q
     soc_all, v_all = [soc_d], [dis["v"]]
-    method = "discharge only"
-    if "chg" in segments:
+    method = "C/20 discharge curve"
+    if branch == "mean" and "chg" in segments:
         c = segments["chg"]
         q = -cum_ah(c["t"], c["i"])
         soc_c = q / q[-1]
@@ -115,7 +119,8 @@ def capacity_and_ocv(segments: dict):
         soc_all, v_all = [grid], [0.5 * (vd + vc)]
         method = "mean of C/20 discharge and charge"
     ocv, rmse = fit_ocv_spline(np.concatenate(soc_all), np.concatenate(v_all))
-    return Q, ocv, {"method": method, "ocv_spline_rmse_mv": rmse}
+    return Q, ocv, {"method": method, "branch": branch if method.startswith("mean") or branch == "discharge" else "discharge",
+                    "ocv_spline_rmse_mv": rmse}
 
 
 # ============================================================== ECM

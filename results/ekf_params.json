@@ -1,6 +1,6 @@
 {
   "dt_s": 1.0,
-  "sigma_v": 0.04,
+  "sigma_v": 0.08,
   "sigma_soc_proc": 1e-06,
   "sigma_rc_proc": 0.001,
   "sigma_soc0": 0.25,

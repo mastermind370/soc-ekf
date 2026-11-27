@@ -35,7 +35,7 @@ from soc_ekf.model import load_params  # noqa: E402
 TEST_KINDS = ("UDDS", "US06", "HWFET")
 TUNE_KINDS = ("LA92", "MIX", "NN")
 GRID = {
-    "sigma_v": [0.005, 0.01, 0.02, 0.04],
+    "sigma_v": [0.005, 0.01, 0.02, 0.04, 0.08],
     "sigma_soc_proc": [1e-6, 1e-5, 1e-4],
     "sigma_rc_proc": [1e-4, 1e-3, 1e-2],
 }
