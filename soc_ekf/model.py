@@ -160,12 +160,44 @@ def _unpack(x, nk, knots, Q):
     return ECMParams(list(knots), r0.tolist(), r1.tolist(), r2.tolist(), float(np.exp(x[-2])), float(np.exp(x[-1])), Q)
 
 
+def soc_zoh(i: np.ndarray, dt: float, capacity_ah: float, soc0: float) -> np.ndarray:
+    """SoC on a uniform grid, consistent with the ZOH model (current i[n] held over [n, n+1))."""
+    return soc0 - np.concatenate([[0.0], np.cumsum(i[:-1])]) * dt / 3600.0 / capacity_ah
+
+
+def fill_gaps(i: np.ndarray, gaps: list, dq_ah, dt: float, rate_a: float | None = None) -> np.ndarray:
+    """Current inside each logging gap that removes dq_ah[k] there.
+
+    rate_a=None: spread evenly over the gap. rate_a=X: discharge at X amps from the start of the gap,
+    then rest (the HPPC protocol: 1C step, then rest). The last partial sample carries the fractional
+    charge, so the result is continuous in dq (needed for the finite-difference fit).
+    """
+    out = i.copy()
+    for (a, b), q in zip(gaps, dq_ah):
+        n = b - a
+        if n <= 0:
+            continue
+        out[a:b] = 0.0
+        if rate_a is None or q * 3600.0 / rate_a > n * dt:
+            out[a:b] = q * 3600.0 / (n * dt)
+            continue
+        steps = q * 3600.0 / (rate_a * dt)
+        k = int(np.floor(steps))
+        out[a:a + k] = rate_a
+        if k < n:
+            out[a + k] = rate_a * (steps - k)
+    return out
+
+
 def fit_ecm(dt, i, v, soc, ocv: OCVTable, capacity_ah: float, knots=(0.0, 1.0), max_points: int = 200_000,
-            init: "ECMParams | None" = None, soc_window=(0.02, 1.0)):
+            init: "ECMParams | None" = None, soc_window=(0.02, 1.0), valid=None,
+            free_gaps: list | None = None, gap_dq0=None, gap_rate_a: float | None = None):
     """Least-squares fit of R0/R1/R2 at SoC knots and tau1/tau2 to a measured voltage trace.
 
-    Residuals are taken only where soc_window[0] <= SoC <= soc_window[1] (the model is not valid past
-    the cutoff knee). `init` warm-starts from another fit (e.g. the constant-parameter one).
+    Residuals use only samples with soc_window[0] <= SoC <= soc_window[1] and valid=True.
+    free_gaps: logging gaps whose removed charge is unknown; their dq [Ah] is fitted too
+    (SoC is then rebuilt from i, starting at soc[0]).
+    Returns (params, rmse_mV, fitted gap dq or None).
     """
     knots = np.asarray(knots, float)
     nk = len(knots)
@@ -175,23 +207,103 @@ def fit_ecm(dt, i, v, soc, ocv: OCVTable, capacity_ah: float, knots=(0.0, 1.0), 
         x0 = np.concatenate([np.log(init.R(k, knots)) for k in ("r0", "r1", "r2")] + [np.log([init.tau1, init.tau2])])
     lb = np.concatenate([np.log([1e-4] * 3 * nk), np.log([0.5, 40.0])])
     ub = np.concatenate([np.log([0.5] * 3 * nk), np.log([40.0, 5000.0])])
+    ng = len(free_gaps) if free_gaps else 0
+    if ng:
+        q0 = np.clip(np.asarray(gap_dq0 if gap_dq0 is not None else [0.1] * ng, float), 1e-3, 0.59)
+        x0 = np.concatenate([x0, q0])
+        lb = np.concatenate([lb, np.zeros(ng)])
+        ub = np.concatenate([ub, np.full(ng, 0.6)])
     x0 = np.clip(x0, lb + 1e-6, ub - 1e-6)
-    ok = np.flatnonzero((soc >= soc_window[0]) & (soc <= soc_window[1]))
+    ok = (soc >= soc_window[0]) & (soc <= soc_window[1])
+    if valid is not None:
+        ok &= valid
+    ok = np.flatnonzero(ok)
     idx = ok[:: max(1, len(ok) // max_points)]
+    soc0 = float(soc[0])
 
-    def resid(x):
-        return (simulate(dt, i, soc, _unpack(x, nk, knots, capacity_ah), ocv)[0] - v)[idx]
+    def model(x):
+        p = _unpack(x[: 3 * nk + 2], nk, knots, capacity_ah)
+        if ng:
+            ii = fill_gaps(i, free_gaps, x[3 * nk + 2:], dt, gap_rate_a)
+            ss = soc_zoh(ii, dt, capacity_ah, soc0)
+        else:
+            ii, ss = i, soc
+        return p, simulate(dt, ii, ss, p, ocv)[0]
 
-    sol = least_squares(resid, x0, bounds=(lb, ub), x_scale=1.0, diff_step=1e-4, max_nfev=400)
-    p = _unpack(sol.x, nk, knots, capacity_ah)
-    vm = simulate(dt, i, soc, p, ocv)[0]
-    return p, float(np.sqrt(np.mean((vm - v)[idx] ** 2)) * 1e3)
+    sol = least_squares(lambda x: (model(x)[1] - v)[idx], x0, bounds=(lb, ub), x_scale=1.0,
+                        diff_step=1e-4, max_nfev=400)
+    p, vm = model(sol.x)
+    dq = sol.x[3 * nk + 2:].tolist() if ng else None
+    return p, float(np.sqrt(np.mean((vm - v)[idx] ** 2)) * 1e3), dq
 
 
-def voltage_errors_mv(v_model, v_meas, soc=None, soc_min=None):
+def prepare(df, raw_sign: int, dt: float | None = None, min_gap_s: float = 120.0, settle_s: float = 120.0):
+    """Uniform-grid arrays plus logging-gap bookkeeping for one test file.
+
+    Returns dict: t, i, v, dt, gaps (grid index ranges), gap_s, dq_tester (Ah the tester counted in
+    each gap), valid (False inside gaps and settle_s after them).
+    """
+    from .data import discharged_ah, resample
+
+    t_raw = df["t_s"].to_numpy()
+    d = np.diff(t_raw)
+    if dt is None:
+        dt = float(max(0.1, np.round(np.median(d), 1)))
+    q_tst = discharged_ah(df, True, raw_sign)
+    have_tester = bool(np.isfinite(df["ah_raw"].to_numpy()).all())
+    g = resample(df, dt)
+    t, i, v = g["t_s"].to_numpy(), g["i"].to_numpy().copy(), g["v"].to_numpy()
+    gaps, gap_s, dq = [], [], []
+    valid = np.ones(len(t), bool)
+    for k in np.flatnonzero(d > min_gap_s):
+        t0, t1 = t_raw[k], t_raw[k + 1]
+        a, b = int(np.searchsorted(t, t0, "right")), int(np.searchsorted(t, t1, "left"))
+        gaps.append((a, b))
+        gap_s.append(float(t1 - t0))
+        dq.append(float(q_tst[k + 1] - q_tst[k]) if have_tester else 0.0)
+        valid[a: int(np.searchsorted(t, t1 + settle_s))] = False
+        i[a:b] = 0.0  # interpolated values inside a gap are meaningless
+    return {"t": t, "i": i, "v": v, "dt": dt, "gaps": gaps, "gap_s": gap_s, "dq_tester": dq,
+            "have_tester_ah": have_tester, "valid": valid}
+
+
+def ocv_gap_guess(v: np.ndarray, gaps: list, ocv: OCVTable, capacity_ah: float) -> list:
+    """Initial dq per gap from the rest voltage just before vs just after it."""
+    out = []
+    for a, b in gaps:
+        before, after = v[max(a - 1, 0)], v[min(b, len(v) - 1)]
+        out.append(float(np.clip((ocv.inverse(before) - ocv.inverse(after)) * capacity_ah, 0.0, 0.59)))
+    return out
+
+
+def discharge_window_end(i: np.ndarray, soc: np.ndarray, chg_a: float = 0.05) -> int:
+    """End index (exclusive) of the discharge test: lowest-SoC point plus the rest after it,
+    stopping where a post-test recharge begins (if the file has one)."""
+    k = int(np.argmin(soc))
+    after = np.flatnonzero(i[k:] < -chg_a)
+    return k + int(after[0]) if len(after) else len(i)
+
+
+def params_at_bounds(p: "ECMParams", tol: float = 0.02) -> list[str]:
+    hits = []
+    for name, val, lo, hi in (("tau1", p.tau1, 0.5, 40.0), ("tau2", p.tau2, 40.0, 5000.0)):
+        if val <= lo * (1 + tol) or val >= hi * (1 - tol):
+            hits.append(f"{name}={val:g}")
+    for k in ("r0", "r1", "r2"):
+        for s, r in zip(p.knots, getattr(p, k)):
+            if r <= 1e-4 * (1 + tol) or r >= 0.5 * (1 - tol):
+                hits.append(f"{k}@{s:g}={r:g}")
+    return hits
+
+
+def voltage_errors_mv(v_model, v_meas, soc=None, soc_min=None, valid=None):
     e = (v_model - v_meas) * 1e3
+    m = np.ones(len(e), bool)
     if soc is not None and soc_min is not None:
-        e = e[soc >= soc_min]
+        m &= soc >= soc_min
+    if valid is not None:
+        m &= valid
+    e = e[m]
     return {"rmse_mv": float(np.sqrt(np.mean(e ** 2))), "max_abs_mv": float(np.max(np.abs(e)))}
 
 

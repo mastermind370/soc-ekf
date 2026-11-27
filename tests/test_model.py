@@ -74,7 +74,7 @@ def test_simulate_steady_state_and_fit_recovers(ocv):
     _, a1, a2 = simulate(dt, ic, np.full_like(ic, 0.5), true, ocv)
     assert a1[-1] == pytest.approx(0.012 * 2.0, rel=1e-3) and a2[-1] == pytest.approx(true.R("r2", 0.5) * 2, rel=1e-2)
     noisy = v + np.random.default_rng(1).normal(0, 1e-3, len(v))
-    p, rmse = fit_ecm(dt, i, noisy, soc, ocv, 2.9, knots=(0.0, 1.0))
+    p, rmse, _ = fit_ecm(dt, i, noisy, soc, ocv, 2.9, knots=(0.0, 1.0))
     assert rmse < 1.3  # ~ the 1 mV noise floor
     assert p.tau1 == pytest.approx(8.0, rel=0.15)
     assert p.R("r0", 0.7) == pytest.approx(true.R("r0", 0.7), rel=0.05)
@@ -91,3 +91,40 @@ def test_initial_soc(ocv):
     assert initial_soc(float(ocv(1.0)), 0.0, ocv) == 1.0
     assert initial_soc(float(ocv(0.5)), 0.0, ocv) == pytest.approx(0.5, abs=2e-3)
     assert initial_soc(float(ocv(0.5)), 2.0, ocv) == 1.0  # not at rest -> assume full
+
+
+def test_discharge_window_end_cuts_recharge():
+    i = np.concatenate([np.full(100, 2.0), np.zeros(20), np.full(50, -1.5)])
+    t = np.arange(len(i)) * 1.0
+    soc = soc_coulomb(t, i, 2.9, 1.0)
+    from soc_ekf.model import discharge_window_end
+    assert discharge_window_end(i, soc) == 120  # discharge + following rest, recharge removed
+
+
+def test_params_at_bounds_flags():
+    from soc_ekf.model import params_at_bounds
+    good = ECMParams([0, 1], [0.02] * 2, [0.01] * 2, [0.01] * 2, 10.0, 300.0, 2.9)
+    bad = ECMParams([0, 1], [0.02] * 2, [0.01] * 2, [0.5] * 2, 40.0, 5000.0, 2.9)
+    assert params_at_bounds(good) == [] and len(params_at_bounds(bad)) == 4
+
+
+def test_fit_with_unlogged_gaps_recovers_charge(ocv):
+    """HPPC-style file where the SoC-step discharges are not logged: fit the missing charge."""
+    from soc_ekf.model import fill_gaps, prepare, soc_zoh
+    import pandas as pd
+    true = ECMParams([0, 1], [0.022, 0.022], [0.012, 0.012], [0.018, 0.018], 8.0, 250.0, 2.9)
+    dt = 1.0
+    t, i = _pulse_profile(dt, hours=3.0)
+    soc = soc_zoh(i, dt, 2.9, 1.0)
+    v = simulate(dt, i, soc, true, ocv)[0]
+    keep = ~((i > 2.8) & (i < 3.0))  # drop the 1C step discharges from the "log"
+    df = pd.DataFrame({"t_s": t[keep], "v": v[keep], "i": i[keep], "ah_raw": np.nan,
+                       "temp_c": np.nan, "chamber_c": np.nan})
+    h = prepare(df, -1, dt=1.0)
+    assert len(h["gaps"]) == 8 and not h["have_tester_ah"]
+    soc_guess = soc_zoh(h["i"], dt, 2.9, 1.0)
+    p, rmse, dq = fit_ecm(dt, h["i"], h["v"], soc_guess, ocv, 2.9, valid=h["valid"],
+                          free_gaps=h["gaps"], gap_dq0=[0.1] * 8)
+    assert rmse < 2.0
+    assert np.allclose(dq, 2.9 * 360 / 3600, rtol=0.05)  # 360 s at 2.9 A each
+    assert p.tau1 == pytest.approx(8.0, rel=0.2)
