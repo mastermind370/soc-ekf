@@ -6,3 +6,6 @@ data/raw/*
 !data/raw/.gitkeep
 build/
 .DS_Store
+
+c/build/
+results/c/
