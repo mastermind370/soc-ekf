@@ -194,14 +194,14 @@ def summarize(rec: Record) -> dict:
     t = df["t_s"].to_numpy()
     q_int = discharged_ah(df, use_tester_ah=False)
     q_tst = discharged_ah(df, use_tester_ah=True, raw_sign=rec.raw_sign)
-    ah_err = float(np.nanmax(np.abs(q_int - q_tst))) if np.isfinite(q_tst).all() else None
+    ah_err = float(np.nanmax(np.abs(q_int - q_tst))) if len(t) > 1 and np.isfinite(q_tst).all() else None
     return {
         "file": rec.path.name,
         "kind": rec.kind,
         "temp_c": rec.temp_c_nominal,
         "condition": rec.condition,
         "n_samples": int(len(df)),
-        "duration_h": float(t[-1] / 3600.0),
+        "duration_h": float(t[-1] / 3600.0) if len(t) else 0.0,
         "median_dt_s": float(np.median(np.diff(t))) if len(t) > 1 else None,
         "v_start": float(df["v"].iloc[0]),
         "v_min": float(df["v"].min()),

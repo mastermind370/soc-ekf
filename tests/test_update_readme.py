@@ -30,7 +30,7 @@ def test_numbers_come_from_json_and_render_is_idempotent(tmp_path):
            "tuning_set": ["x_LA92.mat"],
            "per_file": {"UDDS:x 25degC_UDDS.mat": {
                "kind": "UDDS", "true_start": err(0.123), "wrong_start": err(0.456),
-               "converge_s_5pct": 3.0, "converge_s_2pct": 42.0,
+               "converge_s_5pct": 3.0, "converge_s_2pct": 42.0, "catch_up_s_2pct": 5.0, "catch_up_s_1pct": 42.0,
                "robustness": {"gain_plus5pct": {"ekf": err(1.0), "cc": err(3.0)},
                               "gain_minus5pct": {"ekf": err(1.1), "cc": err(3.1)},
                               "white_noise": {"ekf": err(0.2)}}}}}

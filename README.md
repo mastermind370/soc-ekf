@@ -7,12 +7,14 @@ for a microcontroller BMS. Everything is fitted and tested on real lab data from
 ## Results
 
 <!-- BEGIN:headline -->
-| Cycle (held out, 25 °C) | EKF RMSE | EKF RMSE, start 30% low | EKF converges to ±2% | Coulomb counting, start 30% low | Voltage lookup |
+| Cycle (held out, 25 °C) | EKF RMSE | EKF RMSE, start 30% low | EKF recovers from wrong start* | Coulomb counting, start 30% low | Voltage lookup |
 |---|---|---|---|---|---|
-| UDDS | 0.60% | 0.55% | 6 s | 31.5% | 6.5% |
-| US06 | 1.34% | 1.37% | 14 s | 31.5% | 18.0% |
-| HWFET (a) | 0.43% | 0.44% | 8 s | 31.5% | 12.0% |
-| HWFET (b) | 0.66% | 0.68% | never | 31.5% | 12.3% |
+| UDDS | 0.60% | 0.55% | 1 s | 31.5% | 6.5% |
+| US06 | 1.34% | 1.37% | 1 s | 31.5% | 18.0% |
+| HWFET (a) | 0.43% | 0.44% | 1 s | 31.5% | 12.0% |
+| HWFET (b) | 0.66% | 0.68% | 1 s | 31.5% | 12.3% |
+
+*Time until the wrong-start estimate stays within 1% SoC of the correct-start one. Each cycle starts with the cell at rest, so the first voltage reading already carries most of the information.
 
 Fixed-point C port: max difference from the float EKF **1.3e-05 % SoC** (RMS 4.0e-06 %), **82 ns per update** on an Apple M4 (double-precision C: 44 ns); estimated **651–1936 Cortex-M4 cycles** per update (op-count model, not measured on hardware).
 <!-- END:headline -->
@@ -64,7 +66,9 @@ Panasonic 18650PF Li-ion Battery Data, P. Kollmeyer, University of Wisconsin–M
 [doi:10.17632/wykht8y7tg.1](https://doi.org/10.17632/wykht8y7tg.1), CC-BY-4.0. Not included in this repo.
 
 <!-- BEGIN:data -->
-_Not run yet: `python scripts/inventory.py`._
+| Cell | Files | Temperatures | Drive-cycle files | Drive-cycle hours | Total hours | Size |
+|---|---|---|---|---|---|---|
+| Panasonic NCR18650PF | 198 | -20 °C, -10 °C, 0 °C, 10 °C, 25 °C | 63 | 688.6 | 1831.0 | 196 MB |
 <!-- END:data -->
 
 Ground-truth SoC is lab coulomb counting from the tester's Ah counter, starting at 100% (every test begins after a
@@ -110,12 +114,12 @@ RMSE / max error in % SoC. Coulomb counting uses the 2.9 Ah datasheet capacity; 
 <!-- BEGIN:ekf -->
 EKF at 1 Hz, tuned by grid search on LA92, MIX, NN only: σ_v = 80 mV, σ_SoC,proc = 1e-06 /√s, σ_RC,proc = 1 mV/√s.
 
-| Cycle | RMSE / max, correct start | RMSE / max, 30% low start | → ±5% | → ±2% | Current +5% (CC) | Current −5% (CC) | Noise* |
-|---|---|---|---|---|---|---|---|
-| UDDS | 0.60 / 1.9 | 0.55 / 3.7 | 0 s | 6 s | 1.62 (4.35) | 2.62 (0.98) | 0.57 |
-| US06 | 1.34 / 2.5 | 1.37 / 3.3 | 0 s | 14 s | 2.87 (4.33) | 1.71 (0.99) | 1.29 |
-| HWFET (a) | 0.43 / 2.1 | 0.44 / 3.7 | 0 s | 8 s | 1.93 (4.43) | 2.14 (1.00) | 0.43 |
-| HWFET (b) | 0.66 / 2.7 | 0.68 / 2.9 | 0 s | never | 2.32 (4.43) | 1.86 (1.00) | 0.66 |
+| Cycle | RMSE / max, correct start | RMSE / max, 30% low start | → ±5% of truth | → ±2% of truth | → 1% of correct-start run | Current +5% (CC) | Current −5% (CC) | Noise* |
+|---|---|---|---|---|---|---|---|---|
+| UDDS | 0.60 / 1.9 | 0.55 / 3.7 | 0 s | 6 s | 1 s | 1.62 (4.35) | 2.62 (0.98) | 0.57 |
+| US06 | 1.34 / 2.5 | 1.37 / 3.3 | 0 s | 14 s | 1 s | 2.87 (4.33) | 1.71 (0.99) | 1.29 |
+| HWFET (a) | 0.43 / 2.1 | 0.44 / 3.7 | 0 s | 8 s | 1 s | 1.93 (4.43) | 2.14 (1.00) | 0.43 |
+| HWFET (b) | 0.66 / 2.7 | 0.68 / 2.9 | 0 s | never | 1 s | 2.32 (4.43) | 1.86 (1.00) | 0.66 |
 
 % SoC. *Gaussian noise, σ = 5% of the cycle's RMS current plus 5 mV on voltage.
 <!-- END:ekf -->
@@ -168,6 +172,10 @@ Ops per update: 39 mul, 84 add, 47 shift, 3 div, 24 load, 116 branch. Cortex-M4 
 ## Plots
 
 <!-- BEGIN:plots -->
+**Drive cycles at 25 °C: voltage, current, reference SoC**
+
+![Drive cycles at 25 °C: voltage, current, reference SoC](plots/stage1_drive_cycles_25C.png)
+
 **OCV curve and slope from the C/20 test**
 
 ![OCV curve and slope from the C/20 test](plots/stage2_ocv_25C.png)

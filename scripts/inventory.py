@@ -10,6 +10,8 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+import numpy as np
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
@@ -36,11 +38,14 @@ def main() -> None:
     hdr = f"{'kind':7} {'T':>5} {'cond':5} {'hours':>6} {'dt':>5} {'Vstart':>6} {'Vmin':>5} {'Imax':>5} {'Ah':>6} sgn  file"
     print(hdr)
     print("-" * len(hdr))
+    def num(x, spec):
+        return format(x, spec) if isinstance(x, (int, float)) and x == x else "?".rjust(int(spec.split(".")[0]))
+
     for r in sorted(rows, key=lambda r: (r["temp_c"] if r["temp_c"] is not None else 99, r["kind"])):
         T = f"{r['temp_c']:.0f}" if r["temp_c"] is not None else "?"
-        print(f"{r['kind']:7} {T:>5} {r['condition']:5} {r['duration_h']:6.2f} {r['median_dt_s']:5.2f} "
-              f"{r['v_start']:6.3f} {r['v_min']:5.2f} {r['i_max_discharge_a']:5.1f} "
-              f"{r['net_discharged_ah']:6.3f} {r['raw_sign']:+d}  {r['file']}")
+        print(f"{r['kind']:7} {T:>5} {r['condition']:5} {num(r['duration_h'], '6.2f')} {num(r['median_dt_s'], '5.2f')} "
+              f"{num(r['v_start'], '6.3f')} {num(r['v_min'], '5.2f')} {num(r['i_max_discharge_a'], '5.1f')} "
+              f"{num(r['net_discharged_ah'], '6.3f')} {r['raw_sign']:+d}  {r['file']}")
 
     hours_by_kind = defaultdict(float)
     for r in rows:
@@ -48,7 +53,8 @@ def main() -> None:
     temps = sorted({r["temp_c"] for r in rows if r["temp_c"] is not None})
     drive = [r for r in rows if r["kind"] in DRIVE_CYCLES]
     size_mb = sum(p.stat().st_size for p in files) / 1e6
-    ah_errs = [r["ah_integration_vs_tester_max_err"] for r in rows if r["ah_integration_vs_tester_max_err"] is not None]
+    ah_errs = [r["ah_integration_vs_tester_max_err"] for r in rows
+               if r["ah_integration_vs_tester_max_err"] is not None and np.isfinite(r["ah_integration_vs_tester_max_err"])]
 
     summary = {
         "cell": CELL_NAME,

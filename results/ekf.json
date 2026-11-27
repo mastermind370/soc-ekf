@@ -36,6 +36,8 @@
       "wrong_start_offset": -0.3,
       "converge_s_5pct": 0.0,
       "converge_s_2pct": 6.0,
+      "catch_up_s_2pct": 0.0,
+      "catch_up_s_1pct": 1.0,
       "robustness": {
         "gain_plus5pct": {
           "ekf": {
@@ -96,6 +98,8 @@
       "wrong_start_offset": -0.3,
       "converge_s_5pct": 0.0,
       "converge_s_2pct": 14.0,
+      "catch_up_s_2pct": 0.0,
+      "catch_up_s_1pct": 1.0,
       "robustness": {
         "gain_plus5pct": {
           "ekf": {
@@ -156,6 +160,8 @@
       "wrong_start_offset": -0.3,
       "converge_s_5pct": 0.0,
       "converge_s_2pct": 8.0,
+      "catch_up_s_2pct": 0.0,
+      "catch_up_s_1pct": 1.0,
       "robustness": {
         "gain_plus5pct": {
           "ekf": {
@@ -216,6 +222,8 @@
       "wrong_start_offset": -0.3,
       "converge_s_5pct": 0.0,
       "converge_s_2pct": null,
+      "catch_up_s_2pct": 0.0,
+      "catch_up_s_1pct": 1.0,
       "robustness": {
         "gain_plus5pct": {
           "ekf": {
@@ -286,5 +294,5 @@
       "rmse_noise_pct": 0.5427974365382978
     }
   },
-  "python_us_per_update": 5.407052851116846
+  "python_us_per_update": 5.341079499903152
 }

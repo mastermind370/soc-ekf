@@ -59,12 +59,15 @@ def block_headline():
             r["kind"] + short(name),
             f(r["true_start"]["rmse_pct"], 2, "%"),
             f(r["wrong_start"]["rmse_pct"], 2, "%"),
-            "never" if r["converge_s_2pct"] is None else f"{r['converge_s_2pct']:.0f} s",
+            ("never" if r["catch_up_s_1pct"] is None else f"{r['catch_up_s_1pct']:.0f} s") if "catch_up_s_1pct" in r
+            else ("never" if r["converge_s_2pct"] is None else f"{r['converge_s_2pct']:.0f} s"),
             f(b.get("cc_wrong_start", {}).get("rmse_pct"), 1, "%"),
             f(b.get("ocv_lookup", {}).get("rmse_pct"), 1, "%"),
         ])
     txt = table(["Cycle (held out, 25 °C)", "EKF RMSE", f"EKF RMSE, start {W:.0f}% low",
-                 "EKF converges to ±2%", f"Coulomb counting, start {W:.0f}% low", "Voltage lookup"], rows)
+                 "EKF recovers from wrong start*", f"Coulomb counting, start {W:.0f}% low", "Voltage lookup"], rows)
+    txt += ("\n\n*Time until the wrong-start estimate stays within 1% SoC of the correct-start one. Each cycle starts "
+            "with the cell at rest, so the first voltage reading already carries most of the information.")
     if cport:
         s = cport["summary"]
         lo, hi = s["cortex_m4_cycles_estimate"]
@@ -147,10 +150,11 @@ def block_ekf():
                      f"{f(r['wrong_start']['rmse_pct'])} / {f(r['wrong_start']['max_abs_pct'], 1)}",
                      "never" if r["converge_s_5pct"] is None else f"{r['converge_s_5pct']:.0f} s",
                      "never" if r["converge_s_2pct"] is None else f"{r['converge_s_2pct']:.0f} s",
+                     ("never" if r.get("catch_up_s_1pct") is None else f"{r['catch_up_s_1pct']:.0f} s") if "catch_up_s_1pct" in r else "–",
                      f"{f(rb['gain_plus5pct']['ekf']['rmse_pct'])} ({f(rb['gain_plus5pct']['cc']['rmse_pct'])})",
                      f"{f(rb['gain_minus5pct']['ekf']['rmse_pct'])} ({f(rb['gain_minus5pct']['cc']['rmse_pct'])})",
                      f(rb["white_noise"]["ekf"]["rmse_pct"])])
-    return head + "\n\n" + table(["Cycle", "RMSE / max, correct start", "RMSE / max, 30% low start", "→ ±5%", "→ ±2%",
+    return head + "\n\n" + table(["Cycle", "RMSE / max, correct start", "RMSE / max, 30% low start", "→ ±5% of truth", "→ ±2% of truth", "→ 1% of correct-start run",
                                   "Current +5% (CC)", "Current −5% (CC)", "Noise*"], rows) + \
         "\n\n% SoC. *Gaussian noise, σ = 5% of the cycle's RMS current plus 5 mV on voltage."
 

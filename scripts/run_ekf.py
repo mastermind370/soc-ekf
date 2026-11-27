@@ -4,7 +4,8 @@ Usage:  python scripts/run_ekf.py [--temp 25] [--dt 1.0] [--wrong-start 0.30]
 Needs results/model_params.json. Writes results/ekf.json, results/ekf_params.json, plots/stage4_*.png
 
 Per test cycle: SoC RMSE / max error from the correct start and from a start that is --wrong-start low,
-time to converge (|error| stays < 5% and < 2%), and robustness to sensor corruption:
+time to converge (|error vs truth| stays < 5% / < 2%; and |wrong-start - correct-start estimate| stays
+< 2% / < 1%, which separates filter convergence from model error), and robustness to sensor corruption:
   gain_+5% / gain_-5%  current sensor reads 5% high / low (coulomb counting shown for comparison)
   white_noise          Gaussian noise, std = 5% of the cycle's RMS current and 5 mV on voltage
 """
@@ -111,6 +112,10 @@ def main() -> None:
         err_w = 100 * (est_w - r["sref"])
         conv5 = convergence_time(r["t"], err_w, r["ok"], 5.0)
         conv2 = convergence_time(r["t"], err_w, r["ok"], 2.0)
+        # filter convergence itself: wrong-start estimate catches up with the correct-start one
+        gap = 100 * (est_w - est_t)
+        catch2 = convergence_time(r["t"], gap, r["ok"], 2.0)
+        catch1 = convergence_time(r["t"], gap, r["ok"], 1.0)
 
         rob = {}
         for name, g in (("gain_plus5pct", 1.05), ("gain_minus5pct", 0.95)):
@@ -127,7 +132,8 @@ def main() -> None:
         key = f"{r['kind']}:{r['name']}"
         results[key] = {"kind": r["kind"], "hours": float(r["t"][-1] / 3600), "true_start": e_true,
                         "wrong_start": e_wrong, "wrong_start_offset": -W,
-                        "converge_s_5pct": conv5, "converge_s_2pct": conv2, "robustness": rob,
+                        "converge_s_5pct": conv5, "converge_s_2pct": conv2,
+                        "catch_up_s_2pct": catch2, "catch_up_s_1pct": catch1, "robustness": rob,
                         "final_sigma_soc_pct": float(100 * sig_t[-1])}
         f = lambda x: "never" if x is None else f"{x:.0f}s"  # noqa: E731
         print(f"{r['kind']:6} {e_true['rmse_pct']:9.2f} {e_true['max_abs_pct']:6.2f} {e_wrong['rmse_pct']:10.2f} "
